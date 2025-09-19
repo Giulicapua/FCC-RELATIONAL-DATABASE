@@ -1,42 +1,34 @@
-#! /bin/bash
+#!/bin/bash
 
-if [[ $1 == "test" ]]
-then
+if [ "$1" = "test" ]; then
   PSQL="psql --username=postgres --dbname=worldcuptest -t --no-align -c"
 else
   PSQL="psql --username=freecodecamp --dbname=worldcup -t --no-align -c"
 fi
 
-# Do not change code above this line. Use the PSQL variable above to query your database.
+# helper para conseguir team_id (crea si no existe)
+fetch_team_id() {
+  TEAM_NAME="$1"
+  TEAM_ID=$($PSQL "SELECT team_id FROM teams WHERE name='$TEAM_NAME'")
 
-# limpiar tablas antes de insertar (probando)
-# $PSQL "TRUNCATE games, teams RESTART IDENTITY;"
-
-# funcion para obtener el team_id, insertando si no existe
-get_team_id() {
-  local TEAM_NAME=$1
-  local TEAM_ID=$($PSQL "SELECT team_id FROM teams WHERE name='$TEAM_NAME';")
-
-  if [[ -z $TEAM_ID ]]
-  then
-    $PSQL "INSERT INTO teams(name) VALUES('$TEAM_NAME');"
-    TEAM_ID=$($PSQL "SELECT team_id FROM teams WHERE name='$TEAM_NAME';")
+  if [ -z "$TEAM_ID" ]; then
+    $PSQL "INSERT INTO teams(name) VALUES('$TEAM_NAME')" > /dev/null
+    TEAM_ID=$($PSQL "SELECT team_id FROM teams WHERE name='$TEAM_NAME'")
   fi
 
-  echo $TEAM_ID
+  printf "%s\n" "$TEAM_ID"
 }
 
-# insertar equipos unicos
-cat games.csv | tail -n +2 | cut -d',' -f3,4 | tr ',' '\n' | sort | uniq | while read TEAM
-do
-  get_team_id "$TEAM" > /dev/null
+# cargar equipos unicos
+cut -d',' -f3,4 games.csv | tail -n +2 | tr ',' '\n' | sort -u | while read -r TEAM; do
+  fetch_team_id "$TEAM" >/dev/null
 done
 
-# insertar partidos
-cat games.csv | tail -n +2 | while IFS=',' read YEAR ROUND WINNER OPPONENT WINNER_GOALS OPPONENT_GOALS
-do
-  WINNER_ID=$(get_team_id "$WINNER")
-  OPPONENT_ID=$(get_team_id "$OPPONENT")
+# cargar partidos
+tail -n +2 games.csv | while IFS=',' read -r YEAR ROUND WINNER OPPONENT WINNER_GOALS OPPONENT_GOALS; do
+  WINNER_ID=$(fetch_team_id "$WINNER")
+  OPPONENT_ID=$(fetch_team_id "$OPPONENT")
 
-  $PSQL "INSERT INTO games(year, round, winner_id, opponent_id, winner_goals, opponent_goals) VALUES($YEAR, '$ROUND', $WINNER_ID, $OPPONENT_ID, $WINNER_GOALS, $OPPONENT_GOALS);"
+  $PSQL "INSERT INTO games(year, round, winner_id, opponent_id, winner_goals, opponent_goals) \
+         VALUES($YEAR, '$ROUND', $WINNER_ID, $OPPONENT_ID, $WINNER_GOALS, $OPPONENT_GOALS)" >/dev/null
 done
